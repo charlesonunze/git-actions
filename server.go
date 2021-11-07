@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/mux"
 )
@@ -27,7 +26,7 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/", GetPhrase).Methods("GET")
 
-	port := os.Getenv("PORT")
+	port := "8888"
 	log.Print("Started API on port: " + port)
 	log.Fatal(http.ListenAndServe(":"+port, router))
 }
