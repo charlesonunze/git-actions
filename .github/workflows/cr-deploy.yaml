@@ -1,40 +1,45 @@
-name: Deploy To GCR
-
 on:
   push:
     branches: [ master ]
   pull_request:
     branches: [ master ]
 
+name: Build and Deploy a Container
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE: hello-cloud-run
+  REGION: us-central1
+
 jobs:
   deploy:
-    name: Setup Gcloud Account
     runs-on: ubuntu-latest
-    env:
-      IMAGE_NAME: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_APP_NAME }}
     steps:
-
-    - name: Login
-      uses: GoogleCloudPlatform/github-actions/setup-gcloud@master
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        service_account_email: ${{ secrets.GCP_EMAIL }}
-        service_account_key: ${{ secrets.GCP_CREDENTIALS }}
-
-    - name: Configure Docker
-      run: gcloud auth configure-docker --quiet
-
-    - name: Checkout repository
+    - name: Checkout
       uses: actions/checkout@v2
 
-    - name: Build Docker image
-      run: docker build . -t $IMAGE_NAME
+    - name: Setup Cloud SDK
+      uses: google-github-actions/setup-gcloud@v0.2.0
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_CREDENTIALS }}
+        export_default_credentials: true  # Set to true to authenticate the Cloud Run action
 
-    - name: Test Docker image
-      run: docker run $IMAGE_NAME sh -c "go test -v"
+    - name: Authorize Docker push
+      run: gcloud auth configure-docker
 
-    - name: Push Docker image
-      run: docker push $IMAGE_NAME
+    - name: Build and Push Container
+      run: |-
+        docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{  github.sha }} example-app/
+        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{  github.sha }}
+        
+    - name: Deploy to Cloud Run
+      id: deploy
+      uses: google-github-actions/deploy-cloudrun@v0.4.0
+      with:
+        service: ${{ env.SERVICE }}
+        image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{  github.sha }}
+        region: ${{ env.REGION }}
 
-    - name: Deploy Docker image
-      run: gcloud run deploy ${{ secrets.GCP_PROJECT_ID }} --image $IMAGE_NAME --region us-central1 --platform managed
+    - name: Show Output
+      run: echo ${{ steps.deploy.outputs.url }}
